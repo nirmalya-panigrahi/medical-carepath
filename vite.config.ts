@@ -11,7 +11,7 @@ export default defineConfig(() => {
     (process.env.GITHUB_ACTIONS && repoName ? `/${repoName}/` : '/');
 
   return {
-    base,
+    base: '/medical-carepath/',
     plugins: [
       react(),
       tailwindcss(),
