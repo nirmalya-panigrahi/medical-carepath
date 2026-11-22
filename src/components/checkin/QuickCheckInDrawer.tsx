@@ -1,52 +1,82 @@
 import {X} from 'lucide-react';
 import {useState} from 'react';
-import type {RehabCheckInInput, RehabTrack} from '../../types/carepath';
-import {evaluateSafeProgression, validateRehabInput} from '../../utils/rehabRules';
+import {CDSMP_CONDITIONS} from '../../data/pathwaysData';
+import type {
+  ChronicCondition,
+  RehabCheckInInput,
+  RehabTrack,
+  SymptomMedLogInput,
+} from '../../types/carepath';
+import {evaluateSafeProgression} from '../../utils/rehabRules';
+import type {CareSpace} from '../layout/TopNav';
 
 interface QuickCheckInDrawerProps {
   open: boolean;
+  initialSpace: CareSpace;
   onClose: () => void;
-  onSaveRehabCheckIn: (input: RehabCheckInInput) => void;
+  onSaveRecovery: (input: RehabCheckInInput) => void;
+  onSaveHabitLog: (input: SymptomMedLogInput) => void;
 }
 
 export function QuickCheckInDrawer({
   open,
+  initialSpace,
   onClose,
-  onSaveRehabCheckIn,
+  onSaveRecovery,
+  onSaveHabitLog,
 }: QuickCheckInDrawerProps) {
+  const [space, setSpace] = useState<CareSpace>(initialSpace);
+
+  // Independent Recovery state
   const [track, setTrack] = useState<RehabTrack>('pulmonary');
   const [borgRpe, setBorgRpe] = useState<number>(12);
-  const [painDuring, setPainDuring] = useState<number>(2);
-  const [durationMinutes, setDurationMinutes] = useState<number>(15);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [painLevel, setPainLevel] = useState<number>(2);
+
+  // Independent Daily Habits state
+  const [condition, setCondition] = useState<ChronicCondition>('hypertension');
+  const [symptomSeverity, setSymptomSeverity] = useState<number>(2);
+  const [doseTaken, setDoseTaken] = useState<boolean>(true);
 
   if (!open) {
     return null;
   }
 
-  const quickInput: RehabCheckInInput = {
+  const quickRecoveryInput: RehabCheckInInput = {
     track,
-    mobilityScore: 4,
-    painBefore: Math.max(0, painDuring - 1),
-    painDuring,
-    painAfter24h: painDuring,
+    mobilityScore: painLevel >= 6 ? 2 : 4,
+    painBefore: Math.max(0, painLevel - 1),
+    painDuring: painLevel,
+    painAfter24h: painLevel,
     borgRpe,
-    durationMinutes,
+    durationMinutes: 20,
     completedChecks: [],
-    notes: 'Quick daily check-in',
+    notes: 'Quick recovery check-in',
   };
 
-  const verdict = evaluateSafeProgression(quickInput);
+  const verdict = evaluateSafeProgression(quickRecoveryInput);
+  const simpleAdvice =
+    verdict.status === 'progress'
+      ? 'Looking good — safe to add 2–3 minutes next time.'
+      : verdict.status === 'maintain'
+      ? 'Stay steady — repeat this same amount.'
+      : 'Take it easy — ease back and rest today.';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const check = validateRehabInput(quickInput);
-    if (!check.valid) {
-      setErrorMsg(Object.values(check.errors)[0] || 'Check input values.');
-      return;
+    if (space === 'recovery') {
+      onSaveRecovery(quickRecoveryInput);
+    } else {
+      onSaveHabitLog({
+        condition,
+        symptomSeverity,
+        fatigueLevel: symptomSeverity,
+        vitalReading: '',
+        medicationName: CDSMP_CONDITIONS[condition].sampleMedication,
+        doseTaken,
+        timing: doseTaken ? 'before-symptoms' : 'missed',
+        note: 'Quick daily habit log',
+      });
     }
-    setErrorMsg(null);
-    onSaveRehabCheckIn(quickInput);
     onClose();
   };
 
@@ -64,120 +94,224 @@ export function QuickCheckInDrawer({
               id="quick-checkin-title"
               className="font-display text-2xl font-bold text-slate-900"
             >
-              Quick Daily Check-In
+              Quick Check-In
             </h2>
             <p className="text-xs text-slate-500">
-              30-second Borg pacing and pain threshold snapshot
+              Choose which independent log you want to update
             </p>
           </div>
           <button
             type="button"
             aria-label="Close quick check-in drawer"
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 flex flex-1 flex-col gap-5">
-          <div>
-            <label
-              htmlFor="quick-track"
-              className="block text-xs font-semibold text-slate-700"
-            >
-              Pathway
-            </label>
-            <select
-              id="quick-track"
-              value={track}
-              onChange={(e) => setTrack(e.target.value as RehabTrack)}
-              className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-            >
-              <option value="pulmonary">Pulmonary Rehab</option>
-              <option value="cardiac">Cardiac Rehab</option>
-              <option value="msk">Musculoskeletal Rehab</option>
-            </select>
-          </div>
+        {/* Independent Space Switcher */}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            aria-pressed={space === 'recovery'}
+            onClick={() => setSpace('recovery')}
+            className={`h-11 rounded-lg border text-xs font-bold cursor-pointer ${
+              space === 'recovery'
+                ? 'border-sky-700 bg-sky-700 text-white'
+                : 'border-slate-200 bg-white text-slate-700'
+            }`}
+          >
+            Gentle Recovery
+          </button>
+          <button
+            type="button"
+            aria-pressed={space === 'habits'}
+            onClick={() => setSpace('habits')}
+            className={`h-11 rounded-lg border text-xs font-bold cursor-pointer ${
+              space === 'habits'
+                ? 'border-lime-800 bg-lime-800 text-white'
+                : 'border-slate-200 bg-white text-slate-700'
+            }`}
+          >
+            Daily Habits
+          </button>
+        </div>
 
-          <div>
-            <div className="flex justify-between text-xs font-semibold text-slate-700">
-              <label htmlFor="quick-borg">Borg RPE (6–20)</label>
-              <span className="font-mono tabular-nums">{borgRpe}</span>
-            </div>
-            <input
-              id="quick-borg"
-              type="range"
-              min={6}
-              max={20}
-              value={borgRpe}
-              onChange={(e) => setBorgRpe(Number(e.target.value))}
-              className="mt-2 h-2.5 w-full cursor-pointer accent-sky-700"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-1 flex-col gap-6">
+          {space === 'recovery' ? (
+            <>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">Focus</p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {([
+                    ['pulmonary', 'Breathing'],
+                    ['cardiac', 'Heart'],
+                    ['msk', 'Joints'],
+                  ] as Array<[RehabTrack, string]>).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTrack(key)}
+                      className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                        track === key
+                          ? 'border-sky-700 bg-sky-700 text-white'
+                          : 'border-slate-200 bg-white text-slate-700'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="quick-pain"
-                className="block text-xs font-semibold text-slate-700"
-              >
-                Pain (0–10)
-              </label>
-              <input
-                id="quick-pain"
-                type="number"
-                min={0}
-                max={10}
-                value={painDuring}
-                onChange={(e) => setPainDuring(Number(e.target.value))}
-                className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm tabular-nums"
-              />
-            </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">
+                  How hard did it feel?
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {[
+                    {label: 'Easy', rpe: 9},
+                    {label: 'Steady', rpe: 12},
+                    {label: 'Hard', rpe: 15},
+                    {label: 'Too Much', rpe: 18},
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setBorgRpe(opt.rpe)}
+                      className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                        borgRpe === opt.rpe
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-700'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div>
-              <label
-                htmlFor="quick-duration"
-                className="block text-xs font-semibold text-slate-700"
-              >
-                Minutes
-              </label>
-              <input
-                id="quick-duration"
-                type="number"
-                min={1}
-                max={240}
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm tabular-nums"
-              />
-            </div>
-          </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">
+                  How is your soreness?
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {[
+                    {label: 'Calm', value: 2},
+                    {label: 'Noticeable', value: 4},
+                    {label: 'Sore', value: 7},
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setPainLevel(opt.value)}
+                      className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                        painLevel === opt.value
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-700'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-xs">
-            <p className="font-semibold text-slate-900">{verdict.headline}</p>
-            <p className="mt-1 text-slate-600">{verdict.adjustmentRule}</p>
-          </div>
+              <p className="text-xs font-medium text-slate-700">{simpleAdvice}</p>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">Focus</p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(['hypertension', 'diabetes', 'arthritis'] as ChronicCondition[]).map(
+                    (cond) => (
+                      <button
+                        key={cond}
+                        type="button"
+                        onClick={() => setCondition(cond)}
+                        className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                          condition === cond
+                            ? 'border-lime-800 bg-lime-800 text-white'
+                            : 'border-slate-200 bg-white text-slate-700'
+                        }`}
+                      >
+                        {CDSMP_CONDITIONS[cond].title}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
 
-          {errorMsg && (
-            <p role="alert" className="text-xs font-medium text-rose-700">
-              {errorMsg}
-            </p>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">
+                  How were your symptoms?
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {[
+                    {label: 'Mild', value: 2},
+                    {label: 'Moderate', value: 5},
+                    {label: 'Strong', value: 8},
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setSymptomSeverity(opt.value)}
+                      className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                        symptomSeverity === opt.value
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-700'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-700">
+                  Did you take your medication?
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDoseTaken(true)}
+                    className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                      doseTaken
+                        ? 'border-emerald-800 bg-emerald-800 text-white'
+                        : 'border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Yes, took it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDoseTaken(false)}
+                    className={`h-11 rounded-lg border text-xs font-semibold cursor-pointer ${
+                      !doseTaken
+                        ? 'border-rose-800 bg-rose-800 text-white'
+                        : 'border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Missed or late
+                  </button>
+                </div>
+              </div>
+            </>
           )}
 
-          <div className="mt-auto flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-h-11 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
-            >
-              Cancel
-            </button>
+          <div className="mt-auto border-t border-slate-200 pt-4">
             <button
               type="submit"
-              className="min-h-11 rounded-md bg-sky-700 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-800 cursor-pointer"
+              className={`h-11 w-full rounded-lg px-5 text-sm font-bold text-white cursor-pointer ${
+                space === 'recovery'
+                  ? 'bg-sky-700 hover:bg-sky-800'
+                  : 'bg-lime-800 hover:bg-lime-900'
+              }`}
             >
-              Save Check-In
+              {space === 'recovery' ? 'Save Check-In' : 'Save Daily Log'}
             </button>
           </div>
         </form>

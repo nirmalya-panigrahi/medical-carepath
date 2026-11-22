@@ -2,11 +2,11 @@ import {useCallback, useState} from 'react';
 import {ActionPlanSection} from './components/cdsmp/ActionPlanSection';
 import {QuickCheckInDrawer} from './components/checkin/QuickCheckInDrawer';
 import {SplitHero} from './components/hero/SplitHero';
-import {SummaryStrip} from './components/hero/SummaryStrip';
 import {SafetyFooter} from './components/layout/SafetyFooter';
-import {TopNav} from './components/layout/TopNav';
+import {TopNav, type CareSpace} from './components/layout/TopNav';
 import {SymptomMedLogSection} from './components/logs/SymptomMedLogSection';
 import {RehabPathwaysSection} from './components/rehab/RehabPathwaysSection';
+import {ProgressWaffle} from './components/trends/ProgressWaffle';
 import {
   INITIAL_ACTION_PLANS,
   INITIAL_REHAB_LOGS,
@@ -29,16 +29,23 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+type HabitsSubTab = 'goal' | 'log';
+
 export default function App() {
+  const [activeSpace, setActiveSpace] = useState<CareSpace>('recovery');
+  const [habitsTab, setHabitsTab] = useState<HabitsSubTab>('goal');
   const [selectedTrack, setSelectedTrack] = useState<RehabTrack>('pulmonary');
   const [selectedCondition, setSelectedCondition] =
     useState<ChronicCondition>('hypertension');
   const [quickDrawerOpen, setQuickDrawerOpen] = useState<boolean>(false);
 
+  // Independent Recovery storage
   const rehabStorage = useLocalStorageState<RehabCheckIn[]>(
     'carepath_rehab_logs_v1',
     INITIAL_REHAB_LOGS
   );
+
+  // Independent Daily Habits storage
   const plansStorage = useLocalStorageState<ActionPlan[]>(
     'carepath_action_plans_v1',
     INITIAL_ACTION_PLANS
@@ -48,11 +55,15 @@ export default function App() {
     INITIAL_SYMPTOM_LOGS
   );
 
-  const scrollToSection = useCallback((sectionId: string) => {
-    const el = document.getElementById(sectionId);
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }
+  const openSpace = useCallback((space: CareSpace) => {
+    setActiveSpace(space);
+    const targetId = space === 'recovery' ? 'recovery-space' : 'habits-space';
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById(targetId);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+    });
   }, []);
 
   const handleAddRehabLog = useCallback(
@@ -80,7 +91,7 @@ export default function App() {
       const nextPlan: ActionPlan = {
         ...draft,
         id: `plan-${Date.now()}`,
-        weekLabel: 'Current Week',
+        weekLabel: 'This Week',
         completedDays: [false, false, false, false, false, false, false],
         barrierNote: '',
         feedbackAdjustment: '',
@@ -151,10 +162,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <TopNav
-        onOpenQuickCheckIn={() => setQuickDrawerOpen(true)}
-        onNavigateSection={scrollToSection}
-      />
+      <TopNav onOpenQuickCheckIn={() => setQuickDrawerOpen(true)} />
 
       {storageWarning && (
         <div
@@ -167,51 +175,100 @@ export default function App() {
 
       <main>
         <SplitHero
-          onSelectRehab={() => scrollToSection('rehab-pathways')}
-          onSelectCdsmp={() => scrollToSection('action-plans')}
-          onOpenQuickCheckIn={() => setQuickDrawerOpen(true)}
+          onOpenRecovery={() => openSpace('recovery')}
+          onOpenHabits={() => openSpace('habits')}
         />
+        {/* Space 1: Independent Gentle Recovery */}
+        {activeSpace === 'recovery' && (
+          <div id="recovery-space" className="scroll-mt-16 bg-slate-50">
+            <ProgressWaffle mode="recovery" rehabLogs={rehabStorage.value} />
 
-        <SummaryStrip
-          rehabLogs={rehabStorage.value}
-          actionPlans={plansStorage.value}
-          symptomLogs={symptomStorage.value}
-        />
+            <RehabPathwaysSection
+              logs={rehabStorage.value}
+              selectedTrack={selectedTrack}
+              onSelectTrack={setSelectedTrack}
+              onAddLog={handleAddRehabLog}
+              onDeleteLog={handleDeleteRehabLog}
+            />
+          </div>
+        )}
 
-        <RehabPathwaysSection
-          logs={rehabStorage.value}
-          selectedTrack={selectedTrack}
-          onSelectTrack={setSelectedTrack}
-          onAddLog={handleAddRehabLog}
-          onDeleteLog={handleDeleteRehabLog}
-          onResetLogs={rehabStorage.resetValue}
-        />
+        {/* Space 2: Independent Daily Habits */}
+        {activeSpace === 'habits' && (
+          <div id="habits-space" className="scroll-mt-16 bg-slate-50">
+            <ProgressWaffle
+              mode="habits"
+              actionPlans={plansStorage.value}
+              symptomLogs={symptomStorage.value}
+            />
 
-        <ActionPlanSection
-          plans={plansStorage.value}
-          selectedCondition={selectedCondition}
-          onSelectCondition={setSelectedCondition}
-          onAddPlan={handleAddActionPlan}
-          onToggleDay={handleToggleDay}
-          onUpdateFeedback={handleUpdateFeedback}
-          onDeletePlan={handleDeletePlan}
-          onResetPlans={plansStorage.resetValue}
-        />
+            <div className="border-b border-slate-200 bg-white">
+              <div
+                role="tablist"
+                aria-label="Daily habits tools"
+                className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 sm:px-6 lg:px-8"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={habitsTab === 'goal'}
+                  onClick={() => setHabitsTab('goal')}
+                  className={`h-10 rounded-lg px-4 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    habitsTab === 'goal'
+                      ? 'bg-lime-800 text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  Weekly Goal
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={habitsTab === 'log'}
+                  onClick={() => setHabitsTab('log')}
+                  className={`h-10 rounded-lg px-4 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    habitsTab === 'log'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  Symptoms &amp; Medication
+                </button>
+              </div>
+            </div>
 
-        <SymptomMedLogSection
-          logs={symptomStorage.value}
-          onAddLog={handleAddSymptomLog}
-          onDeleteLog={handleDeleteSymptomLog}
-          onResetLogs={symptomStorage.resetValue}
-        />
+            {habitsTab === 'goal' && (
+              <ActionPlanSection
+                plans={plansStorage.value}
+                selectedCondition={selectedCondition}
+                onSelectCondition={setSelectedCondition}
+                onAddPlan={handleAddActionPlan}
+                onToggleDay={handleToggleDay}
+                onUpdateFeedback={handleUpdateFeedback}
+                onDeletePlan={handleDeletePlan}
+              />
+            )}
+
+            {habitsTab === 'log' && (
+              <SymptomMedLogSection
+                logs={symptomStorage.value}
+                onAddLog={handleAddSymptomLog}
+                onDeleteLog={handleDeleteSymptomLog}
+              />
+            )}
+          </div>
+        )}
       </main>
 
       <SafetyFooter />
 
       <QuickCheckInDrawer
+        key={activeSpace}
         open={quickDrawerOpen}
+        initialSpace={activeSpace}
         onClose={() => setQuickDrawerOpen(false)}
-        onSaveRehabCheckIn={handleAddRehabLog}
+        onSaveRecovery={handleAddRehabLog}
+        onSaveHabitLog={handleAddSymptomLog}
       />
     </div>
   );
